@@ -75,18 +75,49 @@ fn matrix_multiply(m1: Matrix, m2: Matrix) -> Matrix {
     out
 }
 
+fn matrix_addition(m1: Matrix, m2: Matrix) -> Matrix {
+    let m1_nr_of_rows = m1.len();
+    let m2_nr_of_rows = m2.len();
+    let m1_nr_of_columns = m1[0].len();
+    let m2_nr_of_columns = m2[0].len();
+
+    assert_eq!(m1_nr_of_rows, m2_nr_of_rows);
+    assert_eq!(m1_nr_of_columns, m2_nr_of_columns);
+
+    let mut out = create_matrix(m1_nr_of_rows, m1_nr_of_columns, || 0.0);
+
+    for i in 0..m1_nr_of_rows {
+        for j in 0..m1_nr_of_columns {
+            out[i][j] = m1[i][j] + m2[i][j];
+        }
+    }
+
+    out
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::matrix_multiply;
+    use crate::{matrix_multiply, matrix_addition};
 
     #[test]
-    fn it_works() {
+    fn matrix_multiply_simple() {
         assert_eq!(
             matrix_multiply(
                 vec![vec![1.0, 2.0], vec![3.0, 4.0]],
                 vec![vec![1.0], vec![2.0]],
             ),
             vec![vec![5.0], vec![11.0]]
+        );
+    }
+
+    #[test]
+    fn matrix_addition_simple() {
+        assert_eq!(
+            matrix_addition(
+                vec![vec![1.0, 2.0], vec![3.0, 4.0]],
+                vec![vec![1.0, 2.0], vec![2.0, 4.0]],
+            ),
+            vec![vec![2.0, 4.0], vec![5.0, 8.0]]
         );
     }
 }
