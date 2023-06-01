@@ -1,9 +1,8 @@
 use rand::Rng;
 use std::f32::consts::E;
-
 type F = f32;
 type Matrix = Vec<Vec<F>>;
-type Data = &'static [&'static [F]];
+pub type Data = &'static [(&'static [F], &'static [F])];
 
 #[derive(Debug, Clone)]
 pub struct LayerParams {
@@ -19,7 +18,7 @@ pub struct TrainConfig {
     pub eps: F,
     pub rate: F,
     pub nr_of_iterations: usize,
-    pub layers: &'static [usize],
+    pub hidden_layers: &'static [usize],
     pub data: Data,
 }
 
@@ -32,8 +31,8 @@ fn create_matrix<G: FnMut() -> F>(rows: usize, columns: usize, mut gen_value: G)
 pub fn cost(data: Data, model: &Model) -> F {
     let mut total_cost = 0.0;
 
-    for sample in data {
-        let input = vec![Vec::from(&sample[0..sample.len() - 1])];
+    for (inputs, outputs) in data {
+        let input = vec![Vec::from(*inputs)];
 
         let output = model.iter().fold(input, |acc, curr| {
             let a = matrix_multiply(&acc, &curr.weights);
@@ -41,7 +40,7 @@ pub fn cost(data: Data, model: &Model) -> F {
             matrix_map(matrix_addition(&a, &curr.biases), sigmoid)
         });
 
-        total_cost += (sample.last().unwrap() - output[0][0]).powi(2);
+        total_cost += (outputs.last().unwrap() - output[0][0]).powi(2);
     }
 
     total_cost / data.len() as F
@@ -77,32 +76,41 @@ fn get_direction(data: Data, eps: F, rate: F, model: &mut Model) -> Model {
     direction
 }
 
+fn initialize_random_model(layers: &[usize]) -> Model {
+    let mut random = rand::thread_rng();
+    let mut random_float = || random.gen_range(0.0..1.0);
+
+    (0..layers.len() - 1)
+        .map(|i| {
+            let rows = layers[i];
+            let colums = layers[i + 1];
+
+            LayerParams {
+                biases: create_matrix(1, colums, &mut random_float),
+                weights: create_matrix(rows, colums, &mut random_float),
+            }
+        })
+        .collect::<Vec<_>>()
+}
+
 pub fn train(
     TrainConfig {
         data,
         eps,
         rate,
         nr_of_iterations,
-        layers,
+        hidden_layers,
     }: TrainConfig,
 ) -> Model {
-    let nr_of_inputs = data[0].len() - 1;
+    let layers = {
+        let (input, output) = data[0];
+        let mut layers = Vec::from(hidden_layers);
+        layers.insert(0, input.len());
+        layers.push(output.len());
+        layers
+    };
 
-    let mut random = rand::thread_rng();
-    let mut random_float = || random.gen_range(0.0..1.0);
-
-    let mut prev_layer = nr_of_inputs;
-    let mut model = layers
-        .iter()
-        .map(|layer| {
-            let matrix = LayerParams {
-                biases: create_matrix(1, *layer, &mut random_float),
-                weights: create_matrix(prev_layer, *layer, &mut random_float),
-            };
-            prev_layer = *layer;
-            matrix
-        })
-        .collect::<Vec<_>>();
+    let mut model = initialize_random_model(&layers);
 
     for _ in 0..nr_of_iterations {
         let direction = get_direction(data, eps, rate, &mut model);
@@ -112,8 +120,6 @@ pub fn train(
             layer.biases = matrix_subtraction(&layer.biases, &layer_direction.biases);
         }
     }
-
-    println!("{:?} {:?} {}", model, data, cost(data, &model));
 
     model
 }
