@@ -1,8 +1,6 @@
-use rand::Rng;
 use std::f32::consts::E;
 type F = f32;
 type Matrix = Vec<Vec<F>>;
-pub type Data = &'static [(&'static [F], &'static [F])];
 
 #[derive(Debug, Clone)]
 pub struct LayerParams {
@@ -14,12 +12,21 @@ fn sigmoid(x: F) -> F {
     1.0 / (1.0 + E.powf(-x))
 }
 
-pub struct TrainConfig {
+pub type Data<const D: usize, const DI: usize, const DO: usize> = [([F; DI], [F; DO]); D];
+
+pub struct TrainConfig<
+    G: FnMut() -> F,
+    const H: usize,
+    const D: usize,
+    const DI: usize,
+    const DO: usize,
+> {
     pub eps: F,
     pub rate: F,
     pub nr_of_iterations: usize,
-    pub hidden_layers: &'static [usize],
-    pub data: Data,
+    pub generate_parameter: G,
+    pub hidden_layers: [usize; H],
+    pub data: Data<D, DI, DO>,
 }
 
 pub type Model = Vec<LayerParams>;
@@ -28,7 +35,10 @@ fn create_matrix<G: FnMut() -> F>(rows: usize, columns: usize, mut gen_value: G)
     Vec::from_iter((0..rows).map(|_| Vec::from_iter((0..columns).map(|_| gen_value()))))
 }
 
-pub fn cost(data: Data, model: &Model) -> F {
+pub fn cost<const D: usize, const DI: usize, const DO: usize>(
+    data: &Data<D, DI, DO>,
+    model: &Model,
+) -> F {
     let mut total_cost = 0.0;
 
     for (inputs, outputs) in data {
@@ -36,8 +46,7 @@ pub fn cost(data: Data, model: &Model) -> F {
 
         let output = model.iter().fold(input, |acc, curr| {
             let a = matrix_multiply(&acc, &curr.weights);
-
-            matrix_map(matrix_addition(&a, &curr.biases), sigmoid)
+            matrix_map(matrix_addition(a, &curr.biases), sigmoid)
         });
 
         total_cost += (outputs.last().unwrap() - output[0][0]).powi(2);
@@ -46,7 +55,12 @@ pub fn cost(data: Data, model: &Model) -> F {
     total_cost / data.len() as F
 }
 
-fn get_direction(data: Data, eps: F, rate: F, model: &mut Model) -> Model {
+fn get_direction<const D: usize, const DI: usize, const DO: usize>(
+    data: &Data<D, DI, DO>,
+    eps: F,
+    rate: F,
+    model: &mut Model,
+) -> Model {
     let current_cost = cost(data, model);
 
     let mut direction = model.clone();
@@ -76,31 +90,29 @@ fn get_direction(data: Data, eps: F, rate: F, model: &mut Model) -> Model {
     direction
 }
 
-fn initialize_random_model(layers: &[usize]) -> Model {
-    let mut random = rand::thread_rng();
-    let mut random_float = || random.gen_range(0.0..1.0);
-
+fn initialize_random_model<G: FnMut() -> F>(layers: &[usize], mut generete_parameter: G) -> Model {
     (0..layers.len() - 1)
         .map(|i| {
             let rows = layers[i];
             let colums = layers[i + 1];
 
             LayerParams {
-                biases: create_matrix(1, colums, &mut random_float),
-                weights: create_matrix(rows, colums, &mut random_float),
+                biases: create_matrix(1, colums, &mut generete_parameter),
+                weights: create_matrix(rows, colums, &mut generete_parameter),
             }
         })
         .collect::<Vec<_>>()
 }
 
-pub fn train(
+pub fn train<G: FnMut() -> F, const H: usize, const D: usize, const DI: usize, const DO: usize>(
     TrainConfig {
         data,
         eps,
         rate,
+        generate_parameter,
         nr_of_iterations,
         hidden_layers,
-    }: TrainConfig,
+    }: TrainConfig<G, H, D, DI, DO>,
 ) -> Model {
     let layers = {
         let (input, output) = data[0];
@@ -110,10 +122,12 @@ pub fn train(
         layers
     };
 
-    let mut model = initialize_random_model(&layers);
+    let mut model = initialize_random_model(&layers, generate_parameter);
+
+    let data = Box::new(data);
 
     for _ in 0..nr_of_iterations {
-        let direction = get_direction(data, eps, rate, &mut model);
+        let direction = get_direction(&data, eps, rate, &mut model);
 
         for (layer, layer_direction) in model.iter_mut().zip(direction) {
             layer.weights = matrix_subtraction(&layer.weights, &layer_direction.weights);
@@ -149,7 +163,7 @@ fn matrix_multiply(m1: &Matrix, m2: &Matrix) -> Matrix {
     out
 }
 
-fn matrix_addition(m1: &Matrix, m2: &Matrix) -> Matrix {
+fn matrix_addition(mut m1: Matrix, m2: &Matrix) -> Matrix {
     let m1_nr_of_rows = m1.len();
     let m2_nr_of_rows = m2.len();
     let m1_nr_of_columns = m1[0].len();
@@ -158,15 +172,13 @@ fn matrix_addition(m1: &Matrix, m2: &Matrix) -> Matrix {
     assert_eq!(m1_nr_of_rows, m2_nr_of_rows);
     assert_eq!(m1_nr_of_columns, m2_nr_of_columns);
 
-    let mut out = create_matrix(m1_nr_of_rows, m1_nr_of_columns, || 0.0);
-
     for i in 0..m1_nr_of_rows {
         for j in 0..m1_nr_of_columns {
-            out[i][j] = m1[i][j] + m2[i][j];
+            m1[i][j] += m2[i][j];
         }
     }
 
-    out
+    m1
 }
 
 fn matrix_map(mut m: Matrix, func: fn(F) -> F) -> Matrix {
@@ -218,7 +230,7 @@ mod tests {
     fn matrix_addition_simple() {
         assert_eq!(
             matrix_addition(
-                &vec![vec![1.0, 2.0], vec![3.0, 4.0]],
+                vec![vec![1.0, 2.0], vec![3.0, 4.0]],
                 &vec![vec![1.0, 2.0], vec![2.0, 4.0]],
             ),
             vec![vec![2.0, 4.0], vec![5.0, 8.0]]
