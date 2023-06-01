@@ -38,10 +38,10 @@ pub fn cost(data: Data, model: &Model) -> F {
         let output = model.iter().fold(input, |acc, curr| {
             let a = matrix_multiply(&acc, &curr.weights);
 
-            matrix_addition(&a, &curr.biases)
+            matrix_map(matrix_addition(&a, &curr.biases), sigmoid)
         });
 
-        total_cost += (sample.last().unwrap() - sigmoid(output[0][0])).powi(2);
+        total_cost += (sample.last().unwrap() - output[0][0]).powi(2);
     }
 
     total_cost / data.len() as F
@@ -88,9 +88,8 @@ pub fn train(
 ) -> Model {
     let nr_of_inputs = data[0].len() - 1;
 
-    // let mut random = rand::thread_rng();
-    // let mut random_float = || random.gen_range(0.0..1.0);
-    let mut random_float = || 1.0;
+    let mut random = rand::thread_rng();
+    let mut random_float = || random.gen_range(0.0..1.0);
 
     let mut prev_layer = nr_of_inputs;
     let mut model = layers
@@ -107,16 +106,14 @@ pub fn train(
 
     for _ in 0..nr_of_iterations {
         let direction = get_direction(data, eps, rate, &mut model);
-        
+
         for (layer, layer_direction) in model.iter_mut().zip(direction) {
             layer.weights = matrix_subtraction(&layer.weights, &layer_direction.weights);
             layer.biases = matrix_subtraction(&layer.biases, &layer_direction.biases);
         }
-        // println!("{:?}", cost(data, &model));
-        println!("{:?}", model);
     }
 
-    // println!("{:?} {:?} {}", model, data, cost(data, &model));
+    println!("{:?} {:?} {}", model, data, cost(data, &model));
 
     model
 }
@@ -166,6 +163,16 @@ fn matrix_addition(m1: &Matrix, m2: &Matrix) -> Matrix {
     out
 }
 
+fn matrix_map(mut m: Matrix, func: fn(F) -> F) -> Matrix {
+    for row in m.iter_mut() {
+        for cell in row {
+            *cell = func(*cell)
+        }
+    }
+
+    m
+}
+
 fn matrix_subtraction(m1: &Matrix, m2: &Matrix) -> Matrix {
     let m1_nr_of_rows = m1.len();
     let m2_nr_of_rows = m2.len();
@@ -188,7 +195,7 @@ fn matrix_subtraction(m1: &Matrix, m2: &Matrix) -> Matrix {
 
 #[cfg(test)]
 mod tests {
-    use crate::{cost, matrix_addition, matrix_multiply, LayerParams};
+    use crate::{matrix_addition, matrix_multiply};
 
     #[test]
     fn matrix_multiply_simple() {
