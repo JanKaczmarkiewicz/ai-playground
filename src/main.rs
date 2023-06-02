@@ -24,8 +24,7 @@ fn main() {
     };
 
     let model = train(config);
-
-    // println!("cost: {}", cost(&data, &model));
+    
 }
 
 #[bench]
@@ -58,6 +57,5 @@ fn bench_xor(b: &mut Bencher) {
         };
 
         train(config);
-        println!("XD");
     })
 }
