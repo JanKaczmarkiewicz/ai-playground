@@ -35,24 +35,46 @@ fn create_matrix<G: FnMut() -> F>(rows: usize, columns: usize, mut gen_value: G)
     Vec::from_iter((0..rows).map(|_| Vec::from_iter((0..columns).map(|_| gen_value()))))
 }
 
-pub fn cost<const D: usize, const DI: usize, const DO: usize>(
-    data: &Data<D, DI, DO>,
-    model: &Model,
-) -> F {
-    let mut total_cost = 0.0;
+struct Cost {
+    multiplication_matrix_cache: Vec<Matrix>,
+}
 
-    for (inputs, outputs) in data {
-        let input = vec![Vec::from(*inputs)];
-
-        let output = model.iter().fold(input, |acc, curr| {
-            let a = matrix_multiply(&acc, &curr.weights);
-            matrix_map(matrix_addition(a, &curr.biases), sigmoid)
-        });
-
-        total_cost += (outputs.last().unwrap() - output[0][0]).powi(2);
+impl Cost {
+    fn new(layers: &[usize]) -> Self {
+        Cost {
+            multiplication_matrix_cache: layers
+                .iter()
+                .skip(1)
+                .map(|layer| create_matrix(1, *layer, || 0.0))
+                .collect::<Vec<_>>(),
+        }
     }
 
-    total_cost / data.len() as F
+    fn cost<const D: usize, const DI: usize, const DO: usize>(
+        &mut self,
+        data: &Data<D, DI, DO>,
+        model: &Model,
+    ) -> F {
+        let mut total_cost = 0.0;
+
+        for (inputs, outputs) in data {
+            let input = vec![Vec::from(*inputs)];
+            let mut prev = &input;
+
+            for (layer_params, mut cache) in model.iter().zip(&mut self.multiplication_matrix_cache)
+            {
+                matrix_multiply(prev, &layer_params.weights, &mut cache);
+                matrix_addition(&mut cache, &layer_params.biases);
+                matrix_map(&mut cache, sigmoid);
+
+                prev = cache;
+            }
+
+            total_cost += (outputs.last().unwrap() - prev[0][0]).powi(2); // TODO: handle multiple outputs
+        }
+
+        total_cost / data.len() as F
+    }
 }
 
 fn get_direction<const D: usize, const DI: usize, const DO: usize>(
@@ -60,8 +82,9 @@ fn get_direction<const D: usize, const DI: usize, const DO: usize>(
     eps: F,
     rate: F,
     model: &mut Model,
+    cost: &mut Cost,
 ) -> Model {
-    let current_cost = cost(data, model);
+    let current_cost = cost.cost(data, model);
 
     let mut direction = model.clone();
 
@@ -71,7 +94,7 @@ fn get_direction<const D: usize, const DI: usize, const DO: usize>(
                 let temp_weight = model[i].weights[row_index][cell_index];
                 model[i].weights[row_index][cell_index] = temp_weight + eps;
                 direction[i].weights[row_index][cell_index] =
-                    ((cost(data, &model) - current_cost) / eps) * rate;
+                    ((cost.cost(data, &model) - current_cost) / eps) * rate;
                 model[i].weights[row_index][cell_index] = temp_weight;
             }
         }
@@ -81,7 +104,7 @@ fn get_direction<const D: usize, const DI: usize, const DO: usize>(
                 let temp_bias = model[i].biases[row_index][cell_index];
                 model[i].biases[row_index][cell_index] = temp_bias + eps;
                 direction[i].biases[row_index][cell_index] =
-                    ((cost(data, &model) - current_cost) / eps) * rate;
+                    ((cost.cost(data, &model) - current_cost) / eps) * rate;
                 model[i].biases[row_index][cell_index] = temp_bias;
             }
         }
@@ -126,8 +149,10 @@ pub fn train<G: FnMut() -> F, const H: usize, const D: usize, const DI: usize, c
 
     let data = Box::new(data);
 
+    let mut cost = Cost::new(&layers);
+
     for _ in 0..nr_of_iterations {
-        let direction = get_direction(&data, eps, rate, &mut model);
+        let direction = get_direction(&data, eps, rate, &mut model, &mut cost);
 
         for (layer, layer_direction) in model.iter_mut().zip(direction) {
             layer.weights = matrix_subtraction(&layer.weights, &layer_direction.weights);
@@ -138,17 +163,18 @@ pub fn train<G: FnMut() -> F, const H: usize, const D: usize, const DI: usize, c
     model
 }
 
-fn matrix_multiply(m1: &Matrix, m2: &Matrix) -> Matrix {
+fn matrix_multiply(m1: &Matrix, m2: &Matrix, out: &mut Matrix) {
     {
         let m1_nr_of_columns = m1[0].len();
         let m2_nr_of_rows = m2.len();
 
         assert_eq!(m1_nr_of_columns, m2_nr_of_rows);
     }
+
     let m1_nr_of_rows = m1.len();
     let m2_nr_of_columns = m2[0].len();
-
-    let mut out = create_matrix(m1_nr_of_rows, m2_nr_of_columns, || 0.0);
+    assert_eq!(m1_nr_of_rows, out.len());
+    assert_eq!(m2_nr_of_columns, out[0].len());
 
     for i in 0..m1_nr_of_rows {
         for j in 0..m2_nr_of_columns {
@@ -159,11 +185,9 @@ fn matrix_multiply(m1: &Matrix, m2: &Matrix) -> Matrix {
                 .sum()
         }
     }
-
-    out
 }
 
-fn matrix_addition(mut m1: Matrix, m2: &Matrix) -> Matrix {
+fn matrix_addition(m1: &mut Matrix, m2: &Matrix) {
     let m1_nr_of_rows = m1.len();
     let m2_nr_of_rows = m2.len();
     let m1_nr_of_columns = m1[0].len();
@@ -177,18 +201,14 @@ fn matrix_addition(mut m1: Matrix, m2: &Matrix) -> Matrix {
             m1[i][j] += m2[i][j];
         }
     }
-
-    m1
 }
 
-fn matrix_map(mut m: Matrix, func: fn(F) -> F) -> Matrix {
+fn matrix_map(m: &mut Matrix, func: fn(F) -> F) {
     for row in m.iter_mut() {
         for cell in row {
             *cell = func(*cell)
         }
     }
-
-    m
 }
 
 fn matrix_subtraction(m1: &Matrix, m2: &Matrix) -> Matrix {
@@ -217,23 +237,21 @@ mod tests {
 
     #[test]
     fn matrix_multiply_simple() {
-        assert_eq!(
-            matrix_multiply(
-                &vec![vec![1.0, 2.0], vec![3.0, 4.0]],
-                &vec![vec![1.0], vec![2.0]],
-            ),
-            vec![vec![5.0], vec![11.0]]
+        let mut out = vec![vec![0.0], vec![0.0]];
+        matrix_multiply(
+            &vec![vec![1.0, 2.0], vec![3.0, 4.0]],
+            &vec![vec![1.0], vec![2.0]],
+            &mut out,
         );
+        
+        assert_eq!(out, vec![vec![5.0], vec![11.0]]);
     }
 
     #[test]
     fn matrix_addition_simple() {
-        assert_eq!(
-            matrix_addition(
-                vec![vec![1.0, 2.0], vec![3.0, 4.0]],
-                &vec![vec![1.0, 2.0], vec![2.0, 4.0]],
-            ),
-            vec![vec![2.0, 4.0], vec![5.0, 8.0]]
-        );
+        let mut a = vec![vec![1.0, 2.0], vec![3.0, 4.0]];
+
+        matrix_addition(&mut a, &vec![vec![1.0, 2.0], vec![2.0, 4.0]]);
+        assert_eq!(a, vec![vec![2.0, 4.0], vec![5.0, 8.0]],);
     }
 }
