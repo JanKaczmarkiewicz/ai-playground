@@ -1,6 +1,12 @@
+mod f;
+mod matrix;
+
 use std::f32::consts::E;
-type F = f32;
-type Matrix = Vec<Vec<F>>;
+
+use f::F;
+use matrix::{
+    create_matrix, matrix_add, matrix_map, matrix_subtract, matrix_multiply, Matrix,
+};
 
 #[derive(Debug, Clone)]
 pub struct LayerParams {
@@ -31,10 +37,6 @@ pub struct TrainConfig<
 
 pub type Model = Vec<LayerParams>;
 
-fn create_matrix<G: FnMut() -> F>(rows: usize, columns: usize, mut gen_value: G) -> Matrix {
-    Vec::from_iter((0..rows).map(|_| Vec::from_iter((0..columns).map(|_| gen_value()))))
-}
-
 struct Cost {
     multiplication_matrix_cache: Vec<Matrix>,
 }
@@ -64,7 +66,7 @@ impl Cost {
             for (layer_params, mut cache) in model.iter().zip(&mut self.multiplication_matrix_cache)
             {
                 matrix_multiply(prev, &layer_params.weights, &mut cache);
-                matrix_addition(&mut cache, &layer_params.biases);
+                matrix_add(&mut cache, &layer_params.biases);
                 matrix_map(&mut cache, sigmoid);
 
                 prev = cache;
@@ -155,103 +157,10 @@ pub fn train<G: FnMut() -> F, const H: usize, const D: usize, const DI: usize, c
         let direction = get_direction(&data, eps, rate, &mut model, &mut cost);
 
         for (layer, layer_direction) in model.iter_mut().zip(direction) {
-            layer.weights = matrix_subtraction(&layer.weights, &layer_direction.weights);
-            layer.biases = matrix_subtraction(&layer.biases, &layer_direction.biases);
+            layer.weights = matrix_subtract(&layer.weights, &layer_direction.weights);
+            layer.biases = matrix_subtract(&layer.biases, &layer_direction.biases);
         }
     }
 
     model
-}
-
-fn matrix_multiply(m1: &Matrix, m2: &Matrix, out: &mut Matrix) {
-    {
-        let m1_nr_of_columns = m1[0].len();
-        let m2_nr_of_rows = m2.len();
-
-        assert_eq!(m1_nr_of_columns, m2_nr_of_rows);
-    }
-
-    let m1_nr_of_rows = m1.len();
-    let m2_nr_of_columns = m2[0].len();
-    assert_eq!(m1_nr_of_rows, out.len());
-    assert_eq!(m2_nr_of_columns, out[0].len());
-
-    for i in 0..m1_nr_of_rows {
-        for j in 0..m2_nr_of_columns {
-            out[i][j] = m1[i]
-                .iter()
-                .enumerate()
-                .map(|(index, m1_cell)| m1_cell * m2[index][j])
-                .sum()
-        }
-    }
-}
-
-fn matrix_addition(m1: &mut Matrix, m2: &Matrix) {
-    let m1_nr_of_rows = m1.len();
-    let m2_nr_of_rows = m2.len();
-    let m1_nr_of_columns = m1[0].len();
-    let m2_nr_of_columns = m2[0].len();
-
-    assert_eq!(m1_nr_of_rows, m2_nr_of_rows);
-    assert_eq!(m1_nr_of_columns, m2_nr_of_columns);
-
-    for i in 0..m1_nr_of_rows {
-        for j in 0..m1_nr_of_columns {
-            m1[i][j] += m2[i][j];
-        }
-    }
-}
-
-fn matrix_map(m: &mut Matrix, func: fn(F) -> F) {
-    for row in m.iter_mut() {
-        for cell in row {
-            *cell = func(*cell)
-        }
-    }
-}
-
-fn matrix_subtraction(m1: &Matrix, m2: &Matrix) -> Matrix {
-    let m1_nr_of_rows = m1.len();
-    let m2_nr_of_rows = m2.len();
-    let m1_nr_of_columns = m1[0].len();
-    let m2_nr_of_columns = m2[0].len();
-
-    assert_eq!(m1_nr_of_rows, m2_nr_of_rows);
-    assert_eq!(m1_nr_of_columns, m2_nr_of_columns);
-
-    let mut out = create_matrix(m1_nr_of_rows, m1_nr_of_columns, || 0.0);
-
-    for i in 0..m1_nr_of_rows {
-        for j in 0..m1_nr_of_columns {
-            out[i][j] = m1[i][j] - m2[i][j];
-        }
-    }
-
-    out
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{matrix_addition, matrix_multiply};
-
-    #[test]
-    fn matrix_multiply_simple() {
-        let mut out = vec![vec![0.0], vec![0.0]];
-        matrix_multiply(
-            &vec![vec![1.0, 2.0], vec![3.0, 4.0]],
-            &vec![vec![1.0], vec![2.0]],
-            &mut out,
-        );
-        
-        assert_eq!(out, vec![vec![5.0], vec![11.0]]);
-    }
-
-    #[test]
-    fn matrix_addition_simple() {
-        let mut a = vec![vec![1.0, 2.0], vec![3.0, 4.0]];
-
-        matrix_addition(&mut a, &vec![vec![1.0, 2.0], vec![2.0, 4.0]]);
-        assert_eq!(a, vec![vec![2.0, 4.0], vec![5.0, 8.0]],);
-    }
 }
