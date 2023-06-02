@@ -115,7 +115,7 @@ fn get_direction<const D: usize, const DI: usize, const DO: usize>(
     direction
 }
 
-fn initialize_random_model<G: FnMut() -> F>(layers: &[usize], mut generete_parameter: G) -> Model {
+fn initialize_model<G: FnMut() -> F>(layers: &[usize], mut generete_parameter: G) -> Model {
     (0..layers.len() - 1)
         .map(|i| {
             let rows = layers[i];
@@ -147,10 +147,8 @@ pub fn train<G: FnMut() -> F, const H: usize, const D: usize, const DI: usize, c
         layers
     };
 
-    let mut model = initialize_random_model(&layers, generate_parameter);
-
-    let data = Box::new(data);
-
+    let mut model = initialize_model(&layers, generate_parameter);
+    
     let mut cost = Cost::new(&layers);
 
     for _ in 0..nr_of_iterations {
