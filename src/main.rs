@@ -1,9 +1,8 @@
 #![feature(test)]
 extern crate test;
 use rand::Rng;
-use test::Bencher;
 
-use ai_playground::{ train, TrainConfig};
+use ai_playground::{ train, TrainConfig, Cost};
 
 fn main() {
     let mut random = rand::thread_rng();
@@ -11,24 +10,24 @@ fn main() {
         ([0.0, 0.0, 1.0], [0.0]),
         ([0.0, 1.0, 0.0], [1.0]),
         ([1.0, 0.0, 1.0], [1.0]),
-        ([1.0, 1.0, 1.0], [0.0]),
+        ([1.0, 1.0, 1.0], [1.0]),
     ];
 
     let config = TrainConfig {
-        eps: 0.1,
-        rate: 0.1,
+        rate: 0.001,
         generate_parameter: || random.gen_range(0.0..1.0),
-        nr_of_iterations: 100000,
-        hidden_layers: [4, 2, 3],
+        nr_of_iterations: 1,
+        hidden_layers: [3, 2],
         data,
     };
 
     let model = train(config);
-    
+
+    println!("{:?}", Cost::new().cost(&data, &model));
 }
 
 #[bench]
-fn bench_xor(b: &mut Bencher) {
+fn bench_xor(b: &mut test::Bencher) {
     // 16,336,874 ns/iter (+/- 291,784)
     //  9,050,475 ns/iter (+/- 421,420) after mat add allocation optimalization
     //  4,006,797 ns/iter (+/- 28,356) after mat multiplication prealocation optimalization
@@ -48,7 +47,6 @@ fn bench_xor(b: &mut Bencher) {
         };
 
         let config = TrainConfig {
-            eps: 0.1,
             rate: 0.1,
             nr_of_iterations: 40,
             generate_parameter,

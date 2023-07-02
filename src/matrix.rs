@@ -54,7 +54,7 @@ pub fn matrix_map(m: &mut Matrix, func: fn(F) -> F) {
     }
 }
 
-pub fn matrix_subtract(m1: &Matrix, m2: &Matrix) -> Matrix {
+pub fn matrix_subtract(m1: &Matrix, m2: &Matrix) -> Matrix { // TODO: optimize
     let m1_nr_of_rows = m1.len();
     let m2_nr_of_rows = m2.len();
     let m1_nr_of_columns = m1[0].len();
