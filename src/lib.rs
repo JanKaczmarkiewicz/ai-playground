@@ -4,7 +4,7 @@ mod matrix;
 use std::f32::consts::E;
 
 use f::F;
-use matrix::{create_matrix, matrix_add, matrix_map, matrix_multiply, matrix_subtract, Matrix};
+use matrix::{matrix_add, matrix_map, matrix_multiply, matrix_subtract, Matrix};
 
 #[derive(Debug, Clone)]
 pub struct LayerParams {
@@ -34,182 +34,42 @@ pub struct TrainConfig<
 
 pub type Model = Vec<LayerParams>;
 
-pub struct Cost {
-    outputs_for_data_cache: Option<Vec<Vec<Matrix>>>,
-}
+pub fn cost<const D: usize, const DI: usize, const DO: usize>(
+    data: &Data<D, DI, DO>,
+    model: &Model,
+) -> F {
+    data.iter()
+        .map(|(input, output)| -> F {
+            let mut acc = Matrix(vec![input.to_vec()]);
 
-impl Cost {
-    pub fn new() -> Self {
-        Cost {
-            outputs_for_data_cache: None,
-        }
-    }
+            for layer_params in model.iter() {
+                let mut cache = Matrix::create(1, layer_params.weights.columns(), || 0.0);
 
-    pub fn cost<const D: usize, const DI: usize, const DO: usize>(
-        &mut self,
-        data: &Data<D, DI, DO>,
-        model: &Model,
-    ) -> F {
-        self.outputs_for_data(data, model)
-            .iter()
-            .zip(data)
-            .map(|(row, (_, output))| (output.last().unwrap() - row.last().unwrap()[0][0]).powi(2))
-            .sum::<F>()
-            / data.len() as F
-    }
+                matrix_multiply(&acc, &layer_params.weights, &mut cache);
+                matrix_add(&mut cache, &layer_params.biases);
+                matrix_map(&mut cache, sigmoid);
 
-    fn outputs_for_data<const D: usize, const DI: usize, const DO: usize>(
-        &mut self,
-        data: &Data<D, DI, DO>,
-        model: &Model,
-    ) -> &mut Vec<Vec<Matrix>> {
-        let out_cache = self.outputs_for_data_cache.get_or_insert_with(|| {
-            data.iter()
-                .map(|_| {
-                    model
-                        .iter()
-                        .map(|layer| create_matrix(1, layer.weights.len(), || 0.0))
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>()
-        });
+                acc = cache;
+            }
 
-        data.iter()
-            .zip(out_cache.iter_mut())
-            .for_each(|((input, _output), row_cache)| {
-                let mut cache_iter = row_cache.iter_mut();
-                let input_cache = cache_iter.next().unwrap();
-                input_cache[0].clear();
-                input_cache[0].extend(input.iter());
-                let mut prev = input_cache;
-
-                for (layer_params, mut cache) in model.iter().zip(cache_iter) {
-                    matrix_multiply(prev, &layer_params.weights, &mut cache);
-                    matrix_add(&mut cache, &layer_params.biases);
-                    matrix_map(&mut cache, sigmoid);
-
-                    prev = cache;
-                }
-            });
-
-        out_cache
-    }
+            acc.first()
+                .unwrap()
+                .iter()
+                .zip(output)
+                .map(|(a, b)| (a - b).powi(2))
+                .sum::<F>()
+                / output.len() as F
+        })
+        .sum::<F>()
+        / data.len() as F
 }
 
 fn get_gradient_back_propagation<const D: usize, const DI: usize, const DO: usize>(
     data: &Data<D, DI, DO>,
     rate: F,
     model: &mut Model,
-    cost: &mut Cost,
 ) -> Model {
-    let current_cost = cost.cost(data, model);
-
-    let mut direction = model.clone();
-
-    let xes = cost.outputs_for_data(data, model);
-
-    let c = |v| v * (1.0 - v);
-
-    for layer_index in 0..direction.len() {
-        for row_index in 0..direction[layer_index].weights.len() {
-            for cell_index in 0..direction[layer_index].weights[row_index].len() {
-                let cell_direction: f32 = data
-                    .iter()
-                    .enumerate()
-                    .map(|(data_index, (_, out))| -> F {
-                        let recursive_part: F = {
-                            let mut relevant_outputs =
-                                xes[data_index][layer_index..].iter().map(|layer| &layer[0]);
-
-                            let base_x = relevant_outputs.next().unwrap()[row_index];
-                            let next_x = relevant_outputs
-                                .next()
-                                .map_or(1.0, |layer_output| c(layer_output[cell_index]));
-
-                            let mut res = vec![base_x * next_x];
-
-                            let base_x_str = format!("x[l{layer_index}, i{row_index}, v:{base_x}]");
-                            let next_x_str =
-                                format!("c(x[l{}, i{cell_index}, v:{base_x}])", layer_index + 1);
-
-                            let mut res_str = vec![format!("{base_x_str} * {next_x_str}")];
-
-                            for (xes_index, xes) in relevant_outputs.enumerate() {
-                                res_str = xes
-                                    .iter()
-                                    .enumerate()
-                                    .flat_map(|(i, x)| {
-                                        res_str.iter().map(move |res_path| {
-                                            let next_x_str = format!(
-                                                "c(x[l{}, i{i}, v:{x}])",
-                                                layer_index + xes_index + 2,
-                                            );
-                                            format!("{res_path} * {}", next_x_str)
-                                        })
-                                    })
-                                    .collect::<Vec<_>>();
-
-                                res = xes
-                                    .iter()
-                                    .flat_map(|x| res.iter().map(|res_path| res_path * c(*x)))
-                                    .collect::<Vec<_>>();
-                            }
-
-                            let res = res.iter().sum();
-
-                            println!(
-                                "w[l{layer_index}][r{row_index}][c{cell_index}] = {res} = {}",
-                                res_str.join(" + ")
-                            );
-
-                            res
-                        };
-
-                        2.0 * (out[0] - current_cost).powi(2) * recursive_part
-                    })
-                    .sum::<F>();
-
-                direction[layer_index].weights[row_index][cell_index] = cell_direction * rate;
-            }
-        }
-
-        // optimalization idea: first compute biases then based on that weights
-        for cell_index in 0..direction[layer_index].biases[0].len() {
-            let cell_direction: f32 = data
-                .iter()
-                .enumerate()
-                .map(|(data_index, (_, out))| -> F {
-                    let recursive_part: F = {
-                        let mut relevant_outputs = xes[data_index][layer_index..]
-                            .iter()
-                            .map(|layer| &layer[0])
-                            .skip(1); // TODO: check
-
-                        let next_x = relevant_outputs
-                            .next()
-                            .map_or(1.0, |layer_output| c(layer_output[cell_index]));
-
-                        let mut res = vec![c(next_x)];
-
-                        for xes in relevant_outputs {
-                            res = xes
-                                .iter()
-                                .flat_map(|x| res.iter().map(|res_path| res_path * c(*x)))
-                                .collect::<Vec<_>>();
-                        }
-
-                        res.iter().sum()
-                    };
-
-                    2.0 * (out[0] - current_cost).powi(2) * recursive_part
-                })
-                .sum::<F>();
-
-            direction[layer_index].biases[0][cell_index] = cell_direction * rate;
-        }
-    }
-
-    direction
+    todo!()
 }
 
 fn initialize_model<G: FnMut() -> F>(layers: &[usize], mut generete_parameter: G) -> Model {
@@ -219,8 +79,8 @@ fn initialize_model<G: FnMut() -> F>(layers: &[usize], mut generete_parameter: G
             let colums = layers[i + 1];
 
             LayerParams {
-                biases: create_matrix(1, colums, &mut generete_parameter),
-                weights: create_matrix(rows, colums, &mut generete_parameter),
+                biases: Matrix::create(1, colums, &mut generete_parameter),
+                weights: Matrix::create(rows, colums, &mut generete_parameter),
             }
         })
         .collect::<Vec<_>>()
@@ -245,17 +105,15 @@ pub fn train<G: FnMut() -> F, const H: usize, const D: usize, const DI: usize, c
 
     let mut model = initialize_model(&layers, generate_parameter);
 
-    let mut cost = Cost::new();
-
     for _ in 0..nr_of_iterations {
-        let gradient = get_gradient_back_propagation(&data, rate, &mut model, &mut cost);
-        println!("{:#?}", gradient);
+        let gradient = get_gradient_back_propagation(&data, rate, &mut model);
+        
         for (layer, layer_gradient) in model.iter_mut().zip(gradient) {
             layer.weights = matrix_subtract(&layer.weights, &layer_gradient.weights);
             layer.biases = matrix_subtract(&layer.biases, &layer_gradient.biases);
         }
 
-        println!("{:?}", Cost::new().cost(&data, &model));
+        println!("{:?}", cost(&data, &model));
     }
 
     model
@@ -263,24 +121,23 @@ pub fn train<G: FnMut() -> F, const H: usize, const D: usize, const DI: usize, c
 
 #[cfg(test)]
 mod tests {
-    use crate::{get_gradient_back_propagation, initialize_model, Cost};
+    use crate::{cost, get_gradient_back_propagation, initialize_model};
 
     #[test]
     fn get_gradient_back_propagation_test() {
         let arch = [4, 3, 2, 1];
-        let mut cost = Cost::new();
         let mut model = initialize_model(&arch, || 1.0);
         println!(
             "{:?}",
-            get_gradient_back_propagation(
-                &[
-                    ([1.0, 0.2, 0.5, 0.7], [1.0]),
-                    // ([0.5, 0.0, 0.3, 0.2], [0.5])
-                ],
-                0.1,
-                &mut model,
-                &mut cost,
-            )
+            get_gradient_back_propagation(&[([1.0, 0.2, 0.5, 0.7], [1.0])], 0.1, &mut model,)
         );
+    }
+
+    #[test]
+    fn cost_simple_test() {
+        let arch = [2, 1];
+        let model = initialize_model(&arch, || 0.5);
+
+        assert_eq!(cost(&[([1.0, 0.0], [1.0])], &model), 0.07232948);
     }
 }

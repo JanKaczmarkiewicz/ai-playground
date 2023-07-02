@@ -2,7 +2,7 @@
 extern crate test;
 use rand::Rng;
 
-use ai_playground::{ train, TrainConfig, Cost};
+use ai_playground::{train, TrainConfig, cost};
 
 fn main() {
     let mut random = rand::thread_rng();
@@ -23,7 +23,7 @@ fn main() {
 
     let model = train(config);
 
-    println!("{:?}", Cost::new().cost(&data, &model));
+    println!("{:?}", cost(&data, &model));
 }
 
 #[bench]
