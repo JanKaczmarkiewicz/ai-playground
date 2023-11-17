@@ -4,7 +4,7 @@ mod matrix;
 use std::f32::consts::E;
 
 use f::F;
-use matrix::{matrix_add, matrix_map, matrix_multiply, matrix_subtract, Matrix};
+use matrix::{matrix_add, matrix_map, matrix_multiply, Matrix};
 
 #[derive(Debug, Clone)]
 pub struct LayerParams {
@@ -40,16 +40,14 @@ pub fn cost<const D: usize, const DI: usize, const DO: usize>(
 ) -> F {
     data.iter()
         .map(|(input, output)| -> F {
-            let mut acc = Matrix(vec![input.to_vec()]);
+            let mut acc = Matrix::from_slice(input);
 
             for layer_params in model.iter() {
-                let mut cache = Matrix::create(1, layer_params.weights.columns(), || 0.0);
+                let mut result = matrix_multiply(&acc, &layer_params.weights);
+                matrix_add(&mut result, &layer_params.biases);
+                matrix_map(&mut result, sigmoid);
 
-                matrix_multiply(&acc, &layer_params.weights, &mut cache);
-                matrix_add(&mut cache, &layer_params.biases);
-                matrix_map(&mut cache, sigmoid);
-
-                acc = cache;
+                acc = result;
             }
 
             acc.first()
@@ -64,12 +62,72 @@ pub fn cost<const D: usize, const DI: usize, const DO: usize>(
         / data.len() as F
 }
 
-fn get_gradient_back_propagation<const D: usize, const DI: usize, const DO: usize>(
+pub fn get_activations<const DI: usize>(input: &[F; DI], model: &Model) -> Vec<Vec<F>> {
+    let mut activations = Vec::with_capacity(model.len() + 1);
+    let mut acc = Matrix::from_slice(input);
+
+    for layer_params in model.iter() {
+        let mut result = matrix_multiply(&acc, &layer_params.weights);
+        matrix_add(&mut result, &layer_params.biases);
+        matrix_map(&mut result, sigmoid);
+        activations.push(result[0].clone());
+        acc = result;
+    }
+
+    activations
+}
+
+fn gradient_back_propagation<const D: usize, const DI: usize, const DO: usize>(
     data: &Data<D, DI, DO>,
     rate: F,
     model: &mut Model,
-) -> Model {
-    todo!()
+) {
+    for (input, output) in data {
+        let mut activations_of_layers = get_activations(input, model);
+
+        let cloned_activations_of_layers = activations_of_layers.clone();
+
+        for (i, activations_of_layer) in activations_of_layers.iter_mut().enumerate() {
+            let next_layer_index = i + 1;
+
+            if let Some(next_layer_deltas) = cloned_activations_of_layers.get(next_layer_index) {
+                for (current_layer_activation_index, a) in
+                    activations_of_layer.iter_mut().enumerate()
+                {
+                    *a = next_layer_deltas
+                        .iter()
+                        .enumerate()
+                        .map(|(next_layer_delta_index, d)| {
+                            // todo check weight
+                            let w = model[next_layer_index].weights[current_layer_activation_index]
+                                [next_layer_delta_index];
+                            d * w * *a * (1.0 - *a)
+                        })
+                        .sum();
+                }
+            } else {
+                for (a, y) in activations_of_layer.iter_mut().zip(output) {
+                    *a = 2.0 * (y - *a) * *a * (1.0 - *a);
+                }
+            }
+        }
+
+        let deltas_of_layers = activations_of_layers;
+
+        for (LayerParams { biases, weights }, deltas) in model.iter_mut().zip(deltas_of_layers) {
+            for row in biases.iter_mut() {
+                for (b, d) in row.iter_mut().zip(deltas.iter()) {
+                    *b -= d * rate;
+                }
+            }
+
+            for row in weights.iter_mut() {
+                for (w, d) in row.iter_mut().zip(deltas.iter()) {
+                    *w -= d * *w * rate;
+                }
+            }
+        }
+    }
 }
 
 fn initialize_model<G: FnMut() -> F>(layers: &[usize], mut generete_parameter: G) -> Model {
@@ -106,12 +164,7 @@ pub fn train<G: FnMut() -> F, const H: usize, const D: usize, const DI: usize, c
     let mut model = initialize_model(&layers, generate_parameter);
 
     for _ in 0..nr_of_iterations {
-        let gradient = get_gradient_back_propagation(&data, rate, &mut model);
-        
-        for (layer, layer_gradient) in model.iter_mut().zip(gradient) {
-            layer.weights = matrix_subtract(&layer.weights, &layer_gradient.weights);
-            layer.biases = matrix_subtract(&layer.biases, &layer_gradient.biases);
-        }
+        gradient_back_propagation(&data, rate, &mut model);
 
         println!("{:?}", cost(&data, &model));
     }

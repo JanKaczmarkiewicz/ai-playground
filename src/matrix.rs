@@ -18,6 +18,10 @@ impl Matrix {
             (0..rows).map(|_| Vec::from_iter((0..columns).map(|_| gen_value()))),
         ))
     }
+
+    pub fn from_slice(s: &[F]) -> Matrix {
+        Matrix(vec![s.to_vec()])
+    }
 }
 
 impl Deref for Matrix {
@@ -40,13 +44,13 @@ impl From<Vec2D> for Matrix {
     }
 }
 
-pub fn matrix_multiply(m1: &Matrix, m2: &Matrix, out: &mut Matrix) {
+pub fn matrix_multiply(m1: &Matrix, m2: &Matrix) -> Matrix {
     assert_eq!(m1.columns(), m2.rows());
+    assert_eq!(m1.rows(), m2.columns());
 
-    assert_eq!(m1.rows(), out.rows());
-    assert_eq!(m2.columns(), m2.columns());
+    let mut out = Matrix::create(m1.rows(), m2.columns(), || 0.0);
 
-    for i in 0..out.rows() {
+    for i in 0..m1.rows() {
         for j in 0..out.columns() {
             out[i][j] = m1[i]
                 .iter()
@@ -55,6 +59,8 @@ pub fn matrix_multiply(m1: &Matrix, m2: &Matrix, out: &mut Matrix) {
                 .sum()
         }
     }
+
+    out
 }
 
 pub fn matrix_add(m1: &mut Matrix, m2: &Matrix) {
@@ -76,36 +82,24 @@ pub fn matrix_map(m: &mut Matrix, func: fn(F) -> F) {
     }
 }
 
-pub fn matrix_subtract(m1: &Matrix, m2: &Matrix) -> Matrix {
-    // TODO: optimize
-    assert_eq!(m1.rows(), m2.rows());
-    assert_eq!(m1.columns(), m2.columns());
-
-    let mut out = Matrix::create(m1.rows(), m2.columns(), || 0.0);
-
-    for i in 0..out.rows() {
-        for j in 0..out.columns() {
-            out[i][j] = m1[i][j] - m2[i][j];
-        }
-    }
-
-    out
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::{matrix_add, matrix_multiply};
+    use crate::{matrix_add, matrix_multiply, Matrix};
 
     #[test]
     fn matrix_multiply_simple() {
-        let mut out = vec![vec![0.0], vec![0.0]].into();
         matrix_multiply(
             &vec![vec![1.0, 2.0], vec![3.0, 4.0]].into(),
             &vec![vec![1.0], vec![2.0]].into(),
-            &mut out,
         );
 
-        assert_eq!(out, vec![vec![5.0], vec![11.0]].into());
+        assert_eq!(
+            matrix_multiply(
+                &vec![vec![1.0, 2.0], vec![3.0, 4.0]].into(),
+                &vec![vec![1.0], vec![2.0]].into(),
+            ),
+            Matrix(vec![vec![5.0], vec![11.0]])
+        );
     }
 
     #[test]

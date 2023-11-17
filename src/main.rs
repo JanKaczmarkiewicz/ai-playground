@@ -2,22 +2,22 @@
 extern crate test;
 use rand::Rng;
 
-use ai_playground::{train, TrainConfig, cost};
+use ai_playground::{cost, train, TrainConfig};
 
 fn main() {
     let mut random = rand::thread_rng();
     let data = [
-        ([0.0, 0.0, 1.0], [0.0]),
-        ([0.0, 1.0, 0.0], [1.0]),
-        ([1.0, 0.0, 1.0], [1.0]),
-        ([1.0, 1.0, 1.0], [1.0]),
+        ([0.0, 0.0], [0.0]),
+        ([0.0, 1.0], [1.0]),
+        ([1.0, 0.0], [1.0]),
+        ([1.0, 1.0], [1.0]),
     ];
 
     let config = TrainConfig {
         rate: 0.001,
         generate_parameter: || random.gen_range(0.0..1.0),
         nr_of_iterations: 1,
-        hidden_layers: [3, 2],
+        hidden_layers: [2],
         data,
     };
 
