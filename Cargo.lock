@@ -3,9 +3,10 @@
 version = 3
 
 [[package]]
-name = "ai-playground"
+name = "aiplay"
 version = "0.1.0"
 dependencies = [
+ "layout-rs",
  "rand",
 ]
 
@@ -25,6 +26,12 @@ dependencies = [
  "libc",
  "wasi",
 ]
+
+[[package]]
+name = "layout-rs"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1164ef87cb9607c2d887216eca79f0fc92895affe1789bba805dd38d829584e0"
 
 [[package]]
 name = "libc"
