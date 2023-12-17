@@ -1,4 +1,4 @@
-use aiplay::simple_naive_nn_with_bp::simulate;
+use aiplay::simulation::simulate;
 
 fn main() {
     simulate();
