@@ -3,8 +3,8 @@ use crate::fns::sigmoid;
 #[derive(Debug)]
 pub struct Matrix {
     pub vec: Vec<f64>,
-    rows: usize,
-    columns: usize,
+    pub rows: usize,
+    pub columns: usize,
 }
 
 impl Matrix {
@@ -16,11 +16,11 @@ impl Matrix {
         }
     }
 
-    fn get_cell_mut(&mut self, row: usize, column: usize) -> &mut f64 {
+    pub fn get_cell_mut(&mut self, row: usize, column: usize) -> &mut f64 {
         &mut self.vec[row * self.columns + column]
     }
 
-    fn get_cell(&self, row: usize, column: usize) -> f64 {
+    pub fn get_cell(&self, row: usize, column: usize) -> f64 {
         self.vec[row * self.columns + column]
     }
 
@@ -28,8 +28,21 @@ impl Matrix {
         (0..self.columns).map(move |column| self.get_cell(row, column))
     }
 
-    fn column_iter(&self, column: usize) -> impl Iterator<Item = f64> + '_ {
+    pub fn column_iter(&self, column: usize) -> impl Iterator<Item = f64> + '_ {
         (0..self.rows).map(move |row| self.get_cell(row, column))
+    }
+
+    pub fn add(&mut self, other: &Self) {
+        let m1 = self;
+        let m2 = other;
+
+        assert_eq!(m1.columns, m2.columns);
+        assert_eq!(m1.rows, m2.rows);
+
+        m1.vec
+            .iter_mut()
+            .zip(m2.vec.iter())
+            .for_each(|(m1_cell, m2_cell)| *m1_cell += m2_cell)
     }
 
     // multiplies `self` by `other` and writes result to `out`
