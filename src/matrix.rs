@@ -16,6 +16,24 @@ impl Matrix {
         }
     }
 
+    pub fn from_slice(slice: &[f64]) -> Self {
+        Self {
+            vec: slice.to_vec(),
+            rows: 1,
+            columns: slice.len(),
+        }
+    }
+
+    pub fn from_iter(slice: impl Iterator<Item = f64>) -> Self {
+        let vec = slice.collect::<Vec<_>>();
+        let columns = vec.len();
+        Self {
+            vec,
+            rows: 1,
+            columns,
+        }
+    }
+
     pub fn get_cell_mut(&mut self, row: usize, column: usize) -> &mut f64 {
         &mut self.vec[row * self.columns + column]
     }
@@ -24,7 +42,7 @@ impl Matrix {
         self.vec[row * self.columns + column]
     }
 
-    fn row_iter(&self, row: usize) -> impl Iterator<Item = f64> + '_ {
+    pub fn row_iter(&self, row: usize) -> impl Iterator<Item = f64> + '_ {
         (0..self.columns).map(move |column| self.get_cell(row, column))
     }
 

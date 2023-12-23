@@ -7,56 +7,8 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'aiplay'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--lib",
-                    "--package=aiplay"
-                ],
-                "filter": {
-                    "name": "aiplay",
-                    "kind": "lib"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug executable 'aiplay'",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--bin=aiplay",
-                    "--package=aiplay"
-                ],
-                "filter": {
-                    "name": "aiplay",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug unit tests in executable 'aiplay'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--bin=aiplay",
-                    "--package=aiplay"
-                ],
-                "filter": {
-                    "name": "aiplay",
-                    "kind": "bin"
-                }
-            },
+            "name": "Debug",
+            "program": "${workspaceFolder}/<executable file>",
             "args": [],
             "cwd": "${workspaceFolder}"
         }
