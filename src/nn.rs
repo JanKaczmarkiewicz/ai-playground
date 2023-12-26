@@ -1,13 +1,16 @@
 use rand::Rng;
 
-use crate::matrix::Matrix;
+use crate::{
+    fns::sigmoid,
+    matrix::{ColumnVec, Matrix},
+};
 
 struct Layer {
     weights: Matrix,
     weights_gradient: Matrix,
     gradient_updated_times: usize,
-    outputs: Matrix,
-    deltas: Matrix,
+    outputs: ColumnVec,
+    deltas: ColumnVec,
 }
 
 impl Layer {
@@ -20,31 +23,30 @@ impl Layer {
             ),
             gradient_updated_times: 0,
             weights_gradient: Matrix::from_generator(input_size + 1, output_size, || 0.0),
-            outputs: Matrix::from_generator(
-                1,
-                output_size + 1, /* +1 row for bias x multiplier (1) */
-                || 1.0,
-            ),
-            deltas: Matrix::from_generator(1, output_size, || 0.0),
+            outputs: ColumnVec::new(output_size, 0.0),
+            deltas: ColumnVec::new(output_size, 0.0),
         }
     }
 
-    fn forward(&mut self, previus_layer_output: &Matrix) {
-        previus_layer_output.feed_forward(&self.weights, &mut self.outputs)
+    fn forward(&mut self, previus_layer_output: &mut ColumnVec) {
+        previus_layer_output.push(1.0);
+        previus_layer_output.mul(&self.weights, &mut self.outputs);
+        previus_layer_output.pop();
+
+        self.outputs.iter_mut().for_each(|x| *x = sigmoid(*x));
     }
 
     fn backward(&mut self, next_layer: &Layer) {
         self.deltas
-            .vec
             .iter_mut()
-            .zip(self.outputs.row_iter(0))
+            .zip(self.outputs.iter())
             .enumerate()
             .for_each(|(i, (delta, a))| {
                 *delta = a
                     * (1.0 - a)
                     * next_layer
                         .deltas
-                        .column_iter(0)
+                        .iter()
                         .zip(next_layer.weights.column_iter(i))
                         .map(|(next_delta, weight)| next_delta * weight)
                         .sum::<f64>()
@@ -66,14 +68,18 @@ impl Layer {
         self.gradient_updated_times = 0;
     }
 
-    fn update_gradient(&mut self, previus_layer_output: &Matrix) {
+    fn update_gradient(&mut self, previus_layer_output: &mut ColumnVec) {
+        previus_layer_output.push(1.0);
+
         self.gradient_updated_times += 1;
         for row in 0..self.weights_gradient.rows {
             for column in 0..self.weights_gradient.columns {
                 *self.weights_gradient.get_cell_mut(row, column) +=
-                    self.deltas.get_cell(0, column) * previus_layer_output.get_cell(0, row)
+                    self.deltas[column] * previus_layer_output[row];
             }
         }
+
+        previus_layer_output.pop();
     }
 }
 
@@ -95,24 +101,23 @@ impl NeuronNetwork {
         Self::new(layers_sizes, || rng.gen_range(0.0..1.0))
     }
 
-    fn forward_pass(&mut self, inputs: &Matrix) {
+    fn forward_pass(&mut self, inputs: &mut ColumnVec) {
         self.layers
             .iter_mut()
             .fold(inputs, |previus_layer_output, current_layer| {
                 current_layer.forward(previus_layer_output);
-                &current_layer.outputs
+                &mut current_layer.outputs
             });
     }
 
-    fn backward_pass(&mut self, inputs: &Matrix, outputs: &[f64]) {
+    fn backward_pass(&mut self, inputs: &mut ColumnVec, outputs: &[f64]) {
         let last_layer = self.layers.last_mut().unwrap();
 
         // last layer deltas
         last_layer
             .deltas
-            .vec
             .iter_mut()
-            .zip(&last_layer.outputs.vec)
+            .zip(last_layer.outputs.iter())
             .zip(outputs)
             .for_each(|((delta, a), y)| *delta = 2.0 * (a - y).abs() * a * (1.0 - a));
 
@@ -129,7 +134,7 @@ impl NeuronNetwork {
             .iter_mut()
             .fold(inputs, |previus_layer_output, current_layer| {
                 current_layer.update_gradient(previus_layer_output);
-                &current_layer.outputs
+                &mut current_layer.outputs
             });
     }
 
@@ -150,7 +155,7 @@ impl NeuronNetwork {
                 .last()
                 .unwrap()
                 .outputs
-                .row_iter(0)
+                .iter()
                 .zip(outputs)
                 .map(|(a, y)| (a - *y).powi(2))
                 .sum::<f64>()
@@ -164,18 +169,13 @@ impl NeuronNetwork {
     }
 
     pub fn train(&mut self, data_batch: &[(&[f64], &[f64])], n: usize) {
-        let data_batch = data_batch
+        let mut data_batch = data_batch
             .iter()
-            .map(|(inputs, outputs)| {
-                (
-                    Matrix::from_iter(inputs.iter().chain(&[1.0]).map(|x| *x)),
-                    *outputs,
-                )
-            })
+            .map(|(inputs, outputs)| (ColumnVec::from_slice(inputs), *outputs))
             .collect::<Vec<_>>();
 
         for _ in 0..n {
-            for (inputs, outputs) in &data_batch {
+            for (inputs, outputs) in &mut data_batch {
                 self.forward_pass(inputs);
 
                 self.backward_pass(inputs, outputs);
@@ -199,37 +199,33 @@ fn feature() {
 
     assert_eq!(nn.layers[0].weights.columns, 1);
     assert_eq!(nn.layers[0].weights.rows, 3);
-    assert_eq!(nn.layers[0].outputs.columns, 2);
-    assert_eq!(nn.layers[0].outputs.rows, 1);
+    assert_eq!(nn.layers[0].outputs.len(), 1);
 
     assert_eq!(nn.layers[1].weights.columns, 1);
     assert_eq!(nn.layers[1].weights.rows, 2);
-    assert_eq!(nn.layers[1].outputs.columns, 2);
-    assert_eq!(nn.layers[1].outputs.rows, 1);
+    assert_eq!(nn.layers[1].outputs.len(), 1);
 
-    let inputs = Matrix::from_slice(&[0.0, 1.0, 1.0 /* for bias */]);
+    let mut inputs = ColumnVec::from_slice(&[0.0, 1.0]);
     let outputs = &[1.0];
 
-    nn.forward_pass(&inputs);
+    nn.forward_pass(&mut inputs);
 
     let al0 = sigmoid(0.0 * 0.5 + 1.0 * 0.5 + 1.0 * 0.5);
-    assert_eq!(nn.layers[0].outputs.get_cell(0, 0), al0);
-    assert_eq!(nn.layers[0].outputs.get_cell(0, 1), 1.0);
+    assert_eq!(nn.layers[0].outputs[0], al0);
 
     let al1 = sigmoid(al0 * 0.5 + 1.0 * 0.5);
 
-    assert_eq!(nn.layers[1].outputs.get_cell(0, 0), al1);
-    assert_eq!(nn.layers[1].outputs.get_cell(0, 1), 1.0);
+    assert_eq!(nn.layers[1].outputs[0], al1);
 
     // backward_pass + flush_weights is not doing anything meaning full
-    nn.backward_pass(&inputs, outputs);
+    nn.backward_pass(&mut inputs, outputs);
     let dl1a0 = 2.0 * (1.0 - al1) * al1 * (1.0 - al1);
 
-    assert_eq!(nn.layers[1].deltas.get_cell(0, 0), dl1a0);
+    assert_eq!(nn.layers[1].deltas[0], dl1a0);
     assert_eq!(nn.layers[1].weights_gradient.get_cell(0, 0), dl1a0 * al0);
 
     let dl0a0 = (dl1a0 * 0.5 * al0 * (1.0 - al0)) as f32;
-    assert_eq!(nn.layers[0].deltas.get_cell(0, 0) as f32, dl0a0);
+    assert_eq!(nn.layers[0].deltas[0] as f32, dl0a0);
     assert_eq!(
         nn.layers[0].weights_gradient.get_cell(0, 0) as f32,
         dl0a0 * 0.0 /*x0 */
