@@ -54,11 +54,11 @@ impl Layer {
     }
 
     fn flush_weights(&mut self) {
-        let learning_rate = 0.01;
+        let learning_rate = 0.001;
 
         for row in 0..self.weights.rows {
             for column in 0..self.weights.columns {
-                *self.weights.get_cell_mut(row, column) -= learning_rate
+                *self.weights.get_cell_mut(row, column) += learning_rate
                     * self.weights_gradient.get_cell(row, column)
                     / self.gradient_updated_times as f64;
                 *self.weights_gradient.get_cell_mut(row, column) = 0.0
@@ -117,7 +117,7 @@ impl NeuronNetwork {
         last_layer
             .deltas
             .iter_mut()
-            .zip(last_layer.outputs.iter())
+            .zip(&*last_layer.outputs)
             .zip(outputs)
             .for_each(|((delta, a), y)| *delta = 2.0 * (a - y).abs() * a * (1.0 - a));
 
@@ -177,7 +177,6 @@ impl NeuronNetwork {
         for _ in 0..n {
             for (inputs, outputs) in &mut data_batch {
                 self.forward_pass(inputs);
-
                 self.backward_pass(inputs, outputs);
             }
 
@@ -236,8 +235,8 @@ fn feature() {
 
     nn.flush_weights();
 
-    // assert_eq!(nn.layers[1].weights.get_cell(0, 0), 0.0);
+    assert_eq!(nn.layers[1].weights.get_cell(0, 0), 0.0);
 
-    // assert_eq!(nn.layers[1].weights.get_cell(0, 0), 0.0);
-    // assert_eq!(nn.layers[1].weights.get_cell(0, 1), 1.0);
+    assert_eq!(nn.layers[1].weights.get_cell(0, 0), 0.0);
+    assert_eq!(nn.layers[1].weights.get_cell(0, 1), 1.0);
 }

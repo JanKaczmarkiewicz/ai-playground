@@ -59,24 +59,6 @@ impl Matrix {
         }
     }
 
-    pub fn from_slice(slice: &[f64]) -> Self {
-        Self {
-            vec: slice.to_vec(),
-            rows: 1,
-            columns: slice.len(),
-        }
-    }
-
-    pub fn from_iter(slice: impl Iterator<Item = f64>) -> Self {
-        let vec = slice.collect::<Vec<_>>();
-        let columns = vec.len();
-        Self {
-            vec,
-            rows: 1,
-            columns,
-        }
-    }
-
     pub fn get_cell_mut(&mut self, row: usize, column: usize) -> &mut f64 {
         &mut self.vec[row * self.columns + column]
     }
@@ -85,28 +67,7 @@ impl Matrix {
         self.vec[row * self.columns + column]
     }
 
-    pub fn row_iter(&self, row: usize) -> impl Iterator<Item = f64> + '_ {
-        (0..self.columns).map(move |column| self.get_cell(row, column))
-    }
-
     pub fn column_iter(&self, column: usize) -> impl Iterator<Item = f64> + '_ {
         (0..self.rows).map(move |row| self.get_cell(row, column))
-    }
-
-    pub fn map(&mut self, apply: fn(f64) -> f64) {
-        self.vec.iter_mut().for_each(|x| *x = apply(*x))
-    }
-
-    pub fn add(&mut self, other: &Self) {
-        let m1 = self;
-        let m2 = other;
-
-        assert_eq!(m1.columns, m2.columns);
-        assert_eq!(m1.rows, m2.rows);
-
-        m1.vec
-            .iter_mut()
-            .zip(m2.vec.iter())
-            .for_each(|(m1_cell, m2_cell)| *m1_cell += m2_cell)
     }
 }

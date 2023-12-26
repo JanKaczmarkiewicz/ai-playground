@@ -12,5 +12,5 @@ fn main() {
 
     let mut nn = NeuronNetwork::random(&layers);
 
-    nn.train(&data, 10);
+    nn.train(&data, 100);
 }
