@@ -3,14 +3,15 @@ use rand::Rng;
 use crate::{
     fns::sigmoid,
     matrix::{ColumnVec, Matrix},
+    plot::Plot,
 };
 
 struct Layer {
     weights: Matrix,
-    weights_gradient: Matrix,
+    delta_weights: Matrix,
     gradient_updated_times: usize,
     outputs: ColumnVec,
-    deltas: ColumnVec,
+    delta_outputs: ColumnVec,
 }
 
 impl Layer {
@@ -22,9 +23,9 @@ impl Layer {
                 gen,
             ),
             gradient_updated_times: 0,
-            weights_gradient: Matrix::from_generator(input_size + 1, output_size, || 0.0),
+            delta_weights: Matrix::from_generator(input_size + 1, output_size, || 0.0),
             outputs: ColumnVec::new(output_size, 0.0),
-            deltas: ColumnVec::new(output_size, 0.0),
+            delta_outputs: ColumnVec::new(output_size, 0.0),
         }
     }
 
@@ -37,47 +38,46 @@ impl Layer {
     }
 
     fn backward(&mut self, next_layer: &Layer) {
-        self.deltas
-            .iter_mut()
-            .zip(self.outputs.iter())
-            .enumerate()
-            .for_each(|(i, (delta, a))| {
-                *delta = a
-                    * (1.0 - a)
-                    * next_layer
-                        .deltas
-                        .iter()
-                        .zip(next_layer.weights.column_iter(i))
-                        .map(|(next_delta, weight)| next_delta * weight)
-                        .sum::<f64>()
-            })
+        // self.delta_outputs
+        //     .iter_mut()
+        //     .zip(&*self.outputs)
+        //     .enumerate()
+        //     .for_each(|(i, (delta, a))| {
+        //         *delta = a
+        //             * (1.0 - a)
+        //             * next_layer
+        //                 .delta_outputs
+        //                 .iter()
+        //                 .zip(next_layer.weights.column_iter(i))
+        //                 .map(|(next_delta, weight)| next_delta * weight)
+        //                 .sum::<f64>()
+        //     })
     }
 
     fn flush_weights(&mut self) {
-        let learning_rate = 0.001;
+        let learning_rate = 0.1;
 
         for row in 0..self.weights.rows {
             for column in 0..self.weights.columns {
-                *self.weights.get_cell_mut(row, column) += learning_rate
-                    * self.weights_gradient.get_cell(row, column)
+                *self.weights.get_cell_mut(row, column) -= learning_rate
+                    * self.delta_weights.get_cell(row, column)
                     / self.gradient_updated_times as f64;
-                *self.weights_gradient.get_cell_mut(row, column) = 0.0
+                *self.delta_weights.get_cell_mut(row, column) = 0.0
             }
         }
-
         self.gradient_updated_times = 0;
     }
 
     fn update_gradient(&mut self, previus_layer_output: &mut ColumnVec) {
         previus_layer_output.push(1.0);
 
-        self.gradient_updated_times += 1;
-        for row in 0..self.weights_gradient.rows {
-            for column in 0..self.weights_gradient.columns {
-                *self.weights_gradient.get_cell_mut(row, column) +=
-                    self.deltas[column] * previus_layer_output[row];
+        for row in 0..self.delta_weights.rows {
+            for column in 0..self.delta_weights.columns {
+                *self.delta_weights.get_cell_mut(row, column) +=
+                    self.delta_outputs[column] * previus_layer_output[row];
             }
         }
+        self.gradient_updated_times += 1;
 
         previus_layer_output.pop();
     }
@@ -115,7 +115,7 @@ impl NeuronNetwork {
 
         // last layer deltas
         last_layer
-            .deltas
+            .delta_outputs
             .iter_mut()
             .zip(&*last_layer.outputs)
             .zip(outputs)
@@ -144,10 +144,8 @@ impl NeuronNetwork {
             .for_each(|layer| layer.flush_weights());
     }
 
-    fn cost<'a>(&self, outputs_batch: impl Iterator<Item = &'a [f64]>) -> f64 {
+    fn cost<'a>(&self, outputs_batch: &'a [&[f64]]) -> f64 {
         let mut cost = 0.0;
-
-        let mut n = 0;
 
         for outputs in outputs_batch {
             cost += self
@@ -156,36 +154,47 @@ impl NeuronNetwork {
                 .unwrap()
                 .outputs
                 .iter()
-                .zip(outputs)
+                .zip(*outputs)
                 .map(|(a, y)| (a - *y).powi(2))
                 .sum::<f64>()
                 / outputs.len() as f64;
-
-            n += 1;
         }
 
-        cost /= n as f64;
+        // cost /= n as f64;
         cost
     }
 
     pub fn train(&mut self, data_batch: &[(&[f64], &[f64])], n: usize) {
-        let mut data_batch = data_batch
+        let mut data_batch_vec = data_batch
             .iter()
             .map(|(inputs, outputs)| (ColumnVec::from_slice(inputs), *outputs))
             .collect::<Vec<_>>();
 
+        let mut plot = Plot::new().unwrap();
+
         for _ in 0..n {
-            for (inputs, outputs) in &mut data_batch {
+            for (inputs, outputs) in &mut data_batch_vec {
                 self.forward_pass(inputs);
                 self.backward_pass(inputs, outputs);
             }
 
             self.flush_weights();
 
-            println!(
-                "cost: {}",
-                self.cost(data_batch.iter().map(|(_, outputs)| *outputs))
-            )
+            plot.update(
+                |x| {
+                    self.forward_pass(&mut ColumnVec::from_slice(&[x]));
+
+                    self.layers.last().unwrap().outputs[0]
+                },
+                data_batch,
+            );
+
+            let outputs_batch = data_batch_vec
+                .iter()
+                .map(|(_, outputs)| *outputs)
+                .collect::<Vec<_>>();
+
+            println!("cost: {}", self.cost(&outputs_batch))
         }
     }
 }
@@ -220,13 +229,13 @@ fn feature() {
     nn.backward_pass(&mut inputs, outputs);
     let dl1a0 = 2.0 * (1.0 - al1) * al1 * (1.0 - al1);
 
-    assert_eq!(nn.layers[1].deltas[0], dl1a0);
-    assert_eq!(nn.layers[1].weights_gradient.get_cell(0, 0), dl1a0 * al0);
+    assert_eq!(nn.layers[1].delta_outputs[0], dl1a0);
+    assert_eq!(nn.layers[1].delta_weights.get_cell(0, 0), dl1a0 * al0);
 
     let dl0a0 = (dl1a0 * 0.5 * al0 * (1.0 - al0)) as f32;
-    assert_eq!(nn.layers[0].deltas[0] as f32, dl0a0);
+    assert_eq!(nn.layers[0].delta_outputs[0] as f32, dl0a0);
     assert_eq!(
-        nn.layers[0].weights_gradient.get_cell(0, 0) as f32,
+        nn.layers[0].delta_weights.get_cell(0, 0) as f32,
         dl0a0 * 0.0 /*x0 */
     );
 
@@ -239,4 +248,66 @@ fn feature() {
 
     assert_eq!(nn.layers[1].weights.get_cell(0, 0), 0.0);
     assert_eq!(nn.layers[1].weights.get_cell(0, 1), 1.0);
+}
+
+#[test]
+fn simple() {
+    // w* = 0.5
+    // f(x) = sigmoid(x0 * w0 + x1 * w1 + 1 * w2)
+    //
+
+    // C(X):
+    // sum
+    //   for x in X:
+    //     > (f(x) - y)^2
+
+    // C'(X)/w0 = sum of X (2 * (f(x) - y) * f(x) * (1 - f(x)) * x0)
+
+    // a = sigmoid(1.5)
+
+    // C'(X)/w0 =
+    //     sum of (
+    //       0,
+    //       0,
+    //       2 * (sigmoid(1.5) - 1) * sigmoid(1.5) * (1 - sigmoid(1.5)) * x0,
+    //       2 * (sigmoid(1) - 1) * sigmoid(1) * (1 - sigmoid(1)) * x0,
+    //     )
+
+    let layers = [2, 1];
+
+    let mut nn = NeuronNetwork::new(&layers, || 0.5);
+
+    assert_eq!(nn.layers[0].weights.columns, 1);
+    assert_eq!(nn.layers[0].weights.rows, 3);
+    assert_eq!(nn.layers[0].outputs.len(), 1);
+
+    let mut inputs = ColumnVec::from_slice(&[0.0, 1.0]);
+    let outputs: &[f64] = [1.0].as_slice();
+
+    nn.forward_pass(&mut inputs);
+    println!("XD: {}", nn.cost(&[outputs]));
+
+    let al0 = sigmoid(0.0 * 0.5 + 1.0 * 0.5 + 1.0 * 0.5);
+    assert_eq!(nn.layers[0].outputs[0], al0);
+
+    for _ in 0..1000 {
+        nn.forward_pass(&mut inputs);
+        nn.backward_pass(&mut inputs, outputs);
+    }
+    nn.backward_pass(&mut inputs, outputs);
+    // nn.backward_pass(&mut inputs, outputs);
+
+    let dl0a0 = 2.0 * (sigmoid(1.0) - 1.0).abs() * sigmoid(1.0) * (1.0 - sigmoid(1.0));
+    assert_eq!(nn.layers[0].delta_outputs[0] as f32, dl0a0 as f32, "XD");
+
+    // TODO what is happening when there are multiple neurons after hidden layer?
+    // TODO is weight computing algorythm: `flush_weights` correct?
+
+    nn.flush_weights();
+
+    println!("XD: {}", nn.cost(&[outputs]));
+
+    assert_eq!(nn.layers[0].weights.get_cell(0, 0), 0.51);
+    assert_eq!(nn.layers[0].weights.get_cell(0, 1), 0.4998942458144315);
+    assert_eq!(nn.layers[0].weights.get_cell(0, 2), 0.4998942458144315);
 }

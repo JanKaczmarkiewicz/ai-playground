@@ -7,6 +7,7 @@ pub struct Matrix {
     pub columns: usize,
 }
 
+#[derive(Debug)]
 pub struct ColumnVec(Vec<f64>);
 
 impl Deref for ColumnVec {
