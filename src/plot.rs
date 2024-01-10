@@ -7,20 +7,18 @@ use std::time::Duration;
 pub struct Plot {
     canvas: Canvas<Window>,
     event_pump: EventPump,
-    size: u32,
 }
+
+const SIZE: i32 = 800;
 
 impl Plot {
     pub fn new() -> Result<Self, String> {
         let sdl_context = sdl2::init()?;
 
-        let size = 800;
-
         let canvas = sdl_context
             .video()?
-            .window("rust-sdl2 demo: Events", size, size)
+            .window("graph", SIZE as u32, SIZE as u32)
             .position_centered()
-            .resizable()
             .build()
             .map_err(|e| e.to_string())?
             .into_canvas()
@@ -29,19 +27,15 @@ impl Plot {
 
         let event_pump = sdl_context.event_pump()?;
 
-        Ok(Self {
-            canvas,
-            event_pump,
-            size,
-        })
+        Ok(Self { canvas, event_pump })
     }
 
     // x and y are values from (-1..1) to (0..800)
-    // eg: (-0.2, 0.2) ->
+    // eg: (-0.2, 0.2) -> (80, 320)
     fn value_to_point(&self, (x, y): (f64, f64)) -> (i32, i32) {
         (
-            ((x + 1.0) * self.size as f64 / 2.0) as i32,
-            (self.size as f64 - (y + 1.0) * self.size as f64 / 2.0) as i32,
+            ((x + 1.0) * SIZE as f64 / 2.0) as i32,
+            (SIZE as f64 - (y + 1.0) * SIZE as f64 / 2.0) as i32,
         )
     }
 
@@ -57,23 +51,21 @@ impl Plot {
 
         self.canvas.set_draw_color(Color::RGB(255, 0, 0));
 
-        let size = self.size as i32;
-
-        self.canvas.draw_line((0, size / 2), (size, size / 2));
-        self.canvas.draw_line((size / 2, 0), (size / 2, size));
+        self.canvas.draw_line((0, SIZE / 2), (SIZE, SIZE / 2));
+        self.canvas.draw_line((SIZE / 2, 0), (SIZE / 2, SIZE));
 
         self.canvas.set_draw_color(Color::RGB(0, 0, 0));
 
         let number_of_dividers = 20;
 
-        let distance_between = size / number_of_dividers;
+        let distance_between = SIZE / number_of_dividers;
         let line_length = 10; // px
 
         (0..number_of_dividers).for_each(|prev_x| {
             {
                 // horizontal
                 let x_start = distance_between * prev_x;
-                let y_start = (size - line_length) / 2;
+                let y_start = (SIZE - line_length) / 2;
 
                 let x_end = x_start;
                 let y_end = y_start + line_length;
@@ -83,7 +75,7 @@ impl Plot {
 
             {
                 // vertical
-                let x_start = (size - line_length) / 2;
+                let x_start = (SIZE - line_length) / 2;
                 let y_start = distance_between * prev_x;
 
                 let x_end = x_start + line_length;
@@ -93,10 +85,10 @@ impl Plot {
             }
         });
 
-        let nr_of_points = 1000;
+        let nr_of_points = 2000;
 
         (0..nr_of_points)
-            .map(|i| (i - nr_of_points / 2) as f64 / 10.0)
+            .map(|i| ((2.0 * i as f64 / nr_of_points as f64) - 1.0))
             .reduce(|prev_x, x: f64| {
                 self.canvas.draw_line(
                     self.value_to_point((x, f(x))),
