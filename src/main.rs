@@ -38,10 +38,10 @@ fn main() {
     // nn.train(&data, 1000);
 
     let data: [(&[f64], &[f64]); 4] = [
-        (&[0.0], &[0.0]),
-        (&[0.1], &[0.2]),
-        (&[0.2], &[0.4]),
-        (&[0.3], &[0.6]),
+        (&[0.0, 0.0], &[0.0]),
+        (&[0.0, 1.0], &[1.0]),
+        (&[1.0, 0.0], &[0.0]),
+        (&[1.0, 1.0], &[1.0]),
     ];
 
     // w* = 0.5
@@ -67,7 +67,7 @@ fn main() {
 
     let layers = [data[0].0.len(), data[0].1.len()];
 
-    let mut nn = NeuronNetwork::random(&layers);
+    let mut nn = NeuronNetwork::new(&layers, || 0.5);
 
     nn.train(&data, 1000);
 

@@ -3,9 +3,9 @@ use rand::Rng;
 use crate::{
     fns::sigmoid,
     matrix::{ColumnVec, Matrix},
-    plot::Plot,
 };
 
+#[derive(Debug)]
 struct Layer {
     weights: Matrix,
     delta_weights: Matrix,
@@ -37,21 +37,21 @@ impl Layer {
         self.outputs.iter_mut().for_each(|x| *x = sigmoid(*x));
     }
 
-    fn backward(&mut self, next_layer: &Layer) {
-        // self.delta_outputs
-        //     .iter_mut()
-        //     .zip(&*self.outputs)
-        //     .enumerate()
-        //     .for_each(|(i, (delta, a))| {
-        //         *delta = a
-        //             * (1.0 - a)
-        //             * next_layer
-        //                 .delta_outputs
-        //                 .iter()
-        //                 .zip(next_layer.weights.column_iter(i))
-        //                 .map(|(next_delta, weight)| next_delta * weight)
-        //                 .sum::<f64>()
-        //     })
+    fn backward(&mut self, prev_layer: &Layer) {
+        self.delta_outputs
+            .iter_mut()
+            .zip(&*self.outputs)
+            .enumerate()
+            .for_each(|(i, (delta, a))| {
+                *delta = a
+                    * (1.0 - a)
+                    * prev_layer
+                        .delta_outputs
+                        .iter()
+                        .zip(prev_layer.weights.column_iter(i))
+                        .map(|(next_delta, weight)| next_delta * weight)
+                        .sum::<f64>()
+            })
     }
 
     fn flush_weights(&mut self) {
@@ -83,6 +83,7 @@ impl Layer {
     }
 }
 
+#[derive(Debug)]
 pub struct NeuronNetwork {
     layers: Vec<Layer>,
 }
@@ -113,20 +114,20 @@ impl NeuronNetwork {
     fn backward_pass(&mut self, inputs: &mut ColumnVec, outputs: &[f64]) {
         let last_layer = self.layers.last_mut().unwrap();
 
-        // last layer deltas
+        // last layer output deltas
         last_layer
             .delta_outputs
             .iter_mut()
             .zip(&*last_layer.outputs)
             .zip(outputs)
-            .for_each(|((delta, a), y)| *delta = 2.0 * (a - y).abs() * a * (1.0 - a));
+            .for_each(|((delta, a), y)| *delta = 2.0 * (a - y) * a * (1.0 - a));
 
         // other layers deltas
         self.layers
             .iter_mut()
             .rev()
-            .reduce(|next_layer, current_layer| {
-                current_layer.backward(next_layer);
+            .reduce(|prev_layer, current_layer| {
+                current_layer.backward(prev_layer);
                 current_layer
             });
 
@@ -136,6 +137,8 @@ impl NeuronNetwork {
                 current_layer.update_gradient(previus_layer_output);
                 &mut current_layer.outputs
             });
+
+        self.flush_weights();
     }
 
     fn flush_weights(&mut self) {
@@ -144,10 +147,13 @@ impl NeuronNetwork {
             .for_each(|layer| layer.flush_weights());
     }
 
-    fn cost<'a>(&self, outputs_batch: &'a [&[f64]]) -> f64 {
+    fn cost<'a>(&mut self, data_batch: &mut Vec<(ColumnVec, &[f64])>) -> f64 {
         let mut cost = 0.0;
 
-        for outputs in outputs_batch {
+        let n_of_samples = data_batch.len();
+
+        for (inputs, outputs) in data_batch {
+            self.forward_pass(inputs);
             cost += self
                 .layers
                 .last()
@@ -160,7 +166,7 @@ impl NeuronNetwork {
                 / outputs.len() as f64;
         }
 
-        // cost /= n as f64;
+        cost /= n_of_samples as f64;
         cost
     }
 
@@ -170,31 +176,26 @@ impl NeuronNetwork {
             .map(|(inputs, outputs)| (ColumnVec::from_slice(inputs), *outputs))
             .collect::<Vec<_>>();
 
-        let mut plot = Plot::new().unwrap();
-
         for _ in 0..n {
             for (inputs, outputs) in &mut data_batch_vec {
                 self.forward_pass(inputs);
                 self.backward_pass(inputs, outputs);
             }
 
-            self.flush_weights();
+            // self.flush_weights();
 
-            plot.update(
-                |x| {
-                    self.forward_pass(&mut ColumnVec::from_slice(&[x]));
+            // println!("{:?}", self);
 
-                    self.layers.last().unwrap().outputs[0]
-                },
-                data_batch,
-            );
+            // plot.update(
+            //     |x| {
+            //         self.forward_pass(&mut ColumnVec::from_slice(&[x]));
 
-            let outputs_batch = data_batch_vec
-                .iter()
-                .map(|(_, outputs)| *outputs)
-                .collect::<Vec<_>>();
+            //         self.layers.last().unwrap().outputs[0]
+            //     },
+            //     data_batch,
+            // );
 
-            println!("cost: {}", self.cost(&outputs_batch))
+            println!("cost: {}", self.cost(&mut data_batch_vec))
         }
     }
 }
@@ -285,7 +286,6 @@ fn simple() {
     let outputs: &[f64] = [1.0].as_slice();
 
     nn.forward_pass(&mut inputs);
-    println!("XD: {}", nn.cost(&[outputs]));
 
     let al0 = sigmoid(0.0 * 0.5 + 1.0 * 0.5 + 1.0 * 0.5);
     assert_eq!(nn.layers[0].outputs[0], al0);
@@ -304,8 +304,6 @@ fn simple() {
     // TODO is weight computing algorythm: `flush_weights` correct?
 
     nn.flush_weights();
-
-    println!("XD: {}", nn.cost(&[outputs]));
 
     assert_eq!(nn.layers[0].weights.get_cell(0, 0), 0.51);
     assert_eq!(nn.layers[0].weights.get_cell(0, 1), 0.4998942458144315);

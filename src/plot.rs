@@ -3,7 +3,7 @@ extern crate sdl2;
 use sdl2::{pixels::Color, rect::Rect, render::Canvas, video::Window, EventPump};
 use std::time::Duration;
 
-// create plot widget that is capable of updating its content
+// create plot widget that is capable of updating it's content
 pub struct Plot {
     canvas: Canvas<Window>,
     event_pump: EventPump,
