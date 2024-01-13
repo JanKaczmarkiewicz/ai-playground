@@ -215,7 +215,6 @@ fn feature() {
 
     assert_eq!(nn.layers[1].outputs[0], al1);
 
-    // backward_pass + flush_weights is not doing anything meaning full
     nn.backward_pass(&mut inputs, outputs);
     let dl1a0 = 2.0 * (al1 - 1.0) * al1 * (1.0 - al1);
 
@@ -228,9 +227,6 @@ fn feature() {
         nn.layers[0].delta_weights.get_cell(0, 0) as f32,
         (dl0a0 * input[0]) as f32
     );
-
-    // TODO what is happening when there are multiple neurons after hidden layer?
-    // TODO is weight computing algorythm: `flush_weights` correct?
 
     nn.flush_weights();
 
@@ -275,14 +271,20 @@ fn simple() {
     let dl0a0 = 2.0 * (sigmoid(1.0) - 1.0) * sigmoid(1.0) * (1.0 - sigmoid(1.0));
     assert_eq!(nn.layers[0].delta_outputs[0] as f32, dl0a0 as f32);
 
-    // TODO what is happening when there are multiple neurons after hidden layer?
-    // TODO is weight computing algorythm: `flush_weights` correct?
-
     nn.flush_weights();
 
-    // TODO
-
-    assert_eq!(nn.layers[0].weights.get_cell(0, 0), 0.51);
-    assert_eq!(nn.layers[0].weights.get_cell(0, 1), 0.4998942458144315);
-    assert_eq!(nn.layers[0].weights.get_cell(0, 2), 0.4998942458144315);
+    assert_eq!(
+        nn.layers[0].weights.get_cell(0, 0),
+        0.5 - dl0a0 * inputs[0] * 0.1
+    );
+    assert_eq!(
+        nn.layers[0].weights.get_cell(0, 1) as f32,
+        (0.5 - dl0a0 * inputs[1] * 0.1) as f32
+    );
+    assert_eq!(
+        nn.layers[0].weights.get_cell(0, 2) as f32,
+        (0.5 - dl0a0 * 0.1) as f32
+    );
 }
+
+// TODO: test cost fn
