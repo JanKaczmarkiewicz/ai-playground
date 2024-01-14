@@ -10,7 +10,7 @@ fn main() {
 
     let layers = [data[0].0.len(), data[0].1.len()];
 
-    let mut nn = NeuronNetwork::random(&layers);
+    let mut nn = NeuronNetwork::new(&layers, || 0.5);
 
     let mut visualizer = Visualizer::new().unwrap();
 
