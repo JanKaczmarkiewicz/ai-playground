@@ -1,112 +1,74 @@
 use std::ops::{Deref, DerefMut};
 
-use crate::f::F;
-
-type Vec2D = Vec<Vec<F>>;
-#[derive(PartialEq, Debug, Clone)]
-pub struct Matrix(pub Vec2D);
-
-impl Matrix {
-    pub fn rows(&self) -> usize {
-        self.0.len()
-    }
-    pub fn columns(&self) -> usize {
-        self.0[0].len()
-    }
-    pub fn create<G: FnMut() -> F>(rows: usize, columns: usize, mut gen_value: G) -> Matrix {
-        Matrix(Vec::from_iter(
-            (0..rows).map(|_| Vec::from_iter((0..columns).map(|_| gen_value()))),
-        ))
-    }
-
-    pub fn from_slice(s: &[F]) -> Matrix {
-        Matrix(vec![s.to_vec()])
-    }
+#[derive(Debug)]
+pub struct Matrix {
+    pub vec: Vec<f64>,
+    pub rows: usize,
+    pub columns: usize,
 }
 
-impl Deref for Matrix {
-    type Target = Vec2D;
+#[derive(Debug)]
+pub struct ColumnVec(Vec<f64>);
+
+impl Deref for ColumnVec {
+    type Target = Vec<f64>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl DerefMut for Matrix {
+impl DerefMut for ColumnVec {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl From<Vec2D> for Matrix {
-    fn from(vec2d: Vec2D) -> Matrix {
-        Matrix(vec2d)
+impl ColumnVec {
+    pub fn new(capacity: usize, v: f64) -> Self {
+        ColumnVec((0..capacity).map(|_| v).collect())
     }
-}
 
-pub fn matrix_multiply(m1: &Matrix, m2: &Matrix) -> Matrix {
-    assert_eq!(m1.columns(), m2.rows());
-    assert_eq!(m1.rows(), m2.columns());
+    pub fn from_slice(slice: &[f64]) -> Self {
+        ColumnVec(slice.to_vec())
+    }
 
-    let mut out = Matrix::create(m1.rows(), m2.columns(), || 0.0);
+    pub fn mul(&self, other: &Matrix, out: &mut Self) {
+        let m1 = &self.0;
+        let m2 = other;
+        let out = &mut out.0;
 
-    for i in 0..m1.rows() {
-        for j in 0..out.columns() {
-            out[i][j] = m1[i]
+        assert_eq!(m1.len(), m2.rows);
+        assert_eq!(out.len(), m2.columns);
+
+        for (i, out) in out.iter_mut().enumerate() {
+            *out = m1
                 .iter()
-                .enumerate()
-                .map(|(index, m1_cell)| m1_cell * m2[index][j])
-                .sum()
-        }
-    }
-
-    out
-}
-
-pub fn matrix_add(m1: &mut Matrix, m2: &Matrix) {
-    assert_eq!(m1.rows(), m2.rows());
-    assert_eq!(m1.columns(), m2.columns());
-
-    for i in 0..m1.columns() {
-        for j in 0..m2.columns() {
-            m1[i][j] += m2[i][j];
+                .zip(m2.column_iter(i))
+                .map(|(l, r)| *l * r)
+                .sum::<f64>()
         }
     }
 }
 
-pub fn matrix_map(m: &mut Matrix, func: fn(F) -> F) {
-    for row in m.iter_mut() {
-        for cell in row {
-            *cell = func(*cell)
+impl Matrix {
+    pub fn from_generator<G: FnMut() -> f64>(rows: usize, columns: usize, mut gen: G) -> Self {
+        Self {
+            vec: (0..rows * columns).map(|_| gen()).collect(),
+            rows,
+            columns,
         }
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use crate::{matrix_add, matrix_multiply, Matrix};
-
-    #[test]
-    fn matrix_multiply_simple() {
-        matrix_multiply(
-            &vec![vec![1.0, 2.0], vec![3.0, 4.0]].into(),
-            &vec![vec![1.0], vec![2.0]].into(),
-        );
-
-        assert_eq!(
-            matrix_multiply(
-                &vec![vec![1.0, 2.0], vec![3.0, 4.0]].into(),
-                &vec![vec![1.0], vec![2.0]].into(),
-            ),
-            Matrix(vec![vec![5.0], vec![11.0]])
-        );
+    pub fn get_cell_mut(&mut self, row: usize, column: usize) -> &mut f64 {
+        &mut self.vec[row * self.columns + column]
     }
 
-    #[test]
-    fn matrix_addition_simple() {
-        let mut a = vec![vec![1.0, 2.0], vec![3.0, 4.0]].into();
+    pub fn get_cell(&self, row: usize, column: usize) -> f64 {
+        self.vec[row * self.columns + column]
+    }
 
-        matrix_add(&mut a, &vec![vec![1.0, 2.0], vec![2.0, 4.0]].into());
-        assert_eq!(a, vec![vec![2.0, 4.0], vec![5.0, 8.0]].into());
+    pub fn column_iter(&self, column: usize) -> impl Iterator<Item = f64> + '_ {
+        (0..self.rows).map(move |row| self.get_cell(row, column))
     }
 }
