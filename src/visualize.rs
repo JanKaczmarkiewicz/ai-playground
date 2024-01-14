@@ -11,7 +11,6 @@ use std::time::Duration;
 
 use crate::nn::NeuronNetwork;
 
-// create plot widget that is capable of updating its content
 pub struct Visualizer {
     canvas: Canvas<Window>,
     event_pump: EventPump,
@@ -39,6 +38,7 @@ impl Visualizer {
     }
 
     pub fn draw_nn(&mut self, nn: &NeuronNetwork) {
+        // TODO: create graph for displaying cost, internal state of previous costs maybe
         for event in self.event_pump.poll_iter() {
             match event {
                 _ => {}
