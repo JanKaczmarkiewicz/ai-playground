@@ -102,6 +102,10 @@ impl NeuronNetwork {
         Self::new(layers_sizes, || rng.gen_range(0.0..1.0))
     }
 
+    pub fn get_model(&self) -> Vec<&Matrix> {
+        self.layers.iter().map(|layer| &layer.weights).collect()
+    }
+
     fn forward_pass(&mut self, inputs: &mut ColumnVec) {
         self.layers
             .iter_mut()
@@ -145,7 +149,7 @@ impl NeuronNetwork {
             .for_each(|layer| layer.flush_weights());
     }
 
-    fn cost<'a>(&mut self, data_batch: &mut Vec<(ColumnVec, &[f64])>) -> f64 {
+    pub fn cost<'a>(&mut self, data_batch: &mut [(ColumnVec, &[f64])]) -> f64 {
         let mut cost = 0.0;
 
         let n_of_samples = data_batch.len();
@@ -169,21 +173,12 @@ impl NeuronNetwork {
         cost
     }
 
-    pub fn train(&mut self, data_batch: &[(&[f64], &[f64])], n: usize) {
-        let mut data_batch = data_batch
-            .iter()
-            .map(|(inputs, outputs)| (ColumnVec::from_slice(inputs), *outputs))
-            .collect::<Vec<_>>();
-
-        for _ in 0..n {
-            for (inputs, outputs) in &mut data_batch {
-                self.forward_pass(inputs);
-                self.backward_pass(inputs, outputs);
-                self.flush_weights();
-            }
-
-            println!("cost: {}", self.cost(&mut data_batch))
+    pub fn train_step(&mut self, data_batch: &mut [(ColumnVec, &[f64])]) {
+        for (inputs, outputs) in data_batch.iter_mut() {
+            self.forward_pass(inputs);
+            self.backward_pass(inputs, outputs);
         }
+        self.flush_weights();
     }
 }
 
