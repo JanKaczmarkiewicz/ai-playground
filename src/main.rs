@@ -16,7 +16,9 @@ fn main() {
 
     for _ in 0..1000 {
         nn.train_step(&mut data);
-        visualizer.draw_nn(&nn);
+        let cost = nn.cost(&mut data);
+        let model = nn.get_model();
+        visualizer.draw_nn(model, cost);
 
         println!("{}", nn.cost(&mut data))
     }
