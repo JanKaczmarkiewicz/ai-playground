@@ -55,7 +55,7 @@ impl Layer {
     }
 
     fn flush_weights(&mut self) {
-        let learning_rate = 0.1;
+        let learning_rate = 1.0;
 
         for row in 0..self.weights.rows {
             for column in 0..self.weights.columns {
@@ -149,7 +149,7 @@ impl NeuronNetwork {
             .for_each(|layer| layer.flush_weights());
     }
 
-    pub fn cost<'a>(&mut self, data_batch: &mut [(ColumnVec, &[f64])]) -> f64 {
+    pub fn cost<'a>(&mut self, data_batch: &mut [(ColumnVec, Vec<f64>)]) -> f64 {
         let mut cost = 0.0;
 
         let n_of_samples = data_batch.len();
@@ -163,8 +163,8 @@ impl NeuronNetwork {
                 .unwrap()
                 .outputs
                 .iter()
-                .zip(*outputs)
-                .map(|(a, y)| (a - *y).powi(2))
+                .zip(outputs.iter())
+                .map(|(a, y)| (*a - *y).powi(2))
                 .sum::<f64>()
                 / outputs.len() as f64;
         }
@@ -173,7 +173,7 @@ impl NeuronNetwork {
         cost
     }
 
-    pub fn train_step(&mut self, data_batch: &mut [(ColumnVec, &[f64])]) {
+    pub fn train_step(&mut self, data_batch: &mut [(ColumnVec, Vec<f64>)]) {
         for (inputs, outputs) in data_batch.iter_mut() {
             self.forward_pass(inputs);
             self.backward_pass(inputs, outputs);

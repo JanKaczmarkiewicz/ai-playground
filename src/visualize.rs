@@ -100,8 +100,8 @@ impl Visualizer {
             });
 
         const BASELINE: f64 = (SIZE as f64 + PADDING * 4.0) / 2.0;
-        const NEURON_RADIUS: f64 = 40.0;
-        const SPACE_BETWEEN_NEURONS: f64 = 20.0;
+        const NEURON_RADIUS: f64 = 10.0;
+        const SPACE_BETWEEN_NEURONS: f64 = 10.0;
         const SPACE_BETWEEN_LAYERS: f64 = 200.0;
 
         let get_neuron_position = |l: usize, nth: usize| {
